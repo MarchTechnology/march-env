@@ -11,6 +11,7 @@ CLI untuk mengelola **Environment Variables aplikasi Node.js di cPanel/CloudLinu
 - Menambah atau mengubah satu variable.
 - Menambah atau mengubah beberapa variable sekaligus.
 - Menghapus satu atau beberapa variable.
+- Menyalin satu atau beberapa variable antar aplikasi tanpa menampilkan nilainya.
 - Restart aplikasi secara eksplisit.
 - Opsi `--restart` dan `--no-restart`.
 - Batch update dilakukan dengan **satu kali write** ke CloudLinux Selector.
@@ -213,6 +214,61 @@ march-env unset-many \
   --no-restart
 ```
 
+### Copy antar aplikasi
+
+Menyalin satu variable dari aplikasi sumber ke aplikasi target tanpa menampilkan nilainya:
+
+```bash
+march-env copy api payments CLOUDFLARE_API_TOKEN
+```
+
+Urutan argument adalah:
+
+```text
+source-app -> target-app -> KEY
+```
+
+Default-nya aplikasi target direstart setelah perubahan berhasil dan terverifikasi.
+
+Tanpa restart eksplisit:
+
+```bash
+march-env copy \
+  api \
+  payments \
+  CLOUDFLARE_API_TOKEN \
+  --no-restart
+```
+
+Jika key tidak tersedia pada aplikasi sumber, operasi gagal sebelum write dan aplikasi target tidak diubah.
+
+### Batch copy
+
+Beberapa variable dapat disalin dalam satu write:
+
+```bash
+march-env copy-many \
+  api \
+  payments \
+  CLOUDFLARE_API_TOKEN \
+  CLOUDFLARE_ZONE_ID
+```
+
+Tanpa restart eksplisit:
+
+```bash
+march-env copy-many \
+  api \
+  payments \
+  CLOUDFLARE_API_TOKEN \
+  CLOUDFLARE_ZONE_ID \
+  --no-restart
+```
+
+`copy-many` memvalidasi seluruh key pada source sebelum melakukan write. Jika salah satu key hilang, target tidak diubah.
+
+Nilai variable tidak pernah ditampilkan. Source tidak diubah; hanya environment target yang ditulis dan diverifikasi.
+
 ### Restart aplikasi
 
 ```bash
@@ -294,6 +350,7 @@ Proteksi yang diterapkan:
 - raw `cloudlinux-selector get --json` tidak pernah dicetak,
 - raw stdout/stderr Selector tidak diteruskan pada error,
 - temporary environment variable internal dibersihkan setelah proses selesai,
+- `copy` / `copy-many` memindahkan nilai langsung di memory tanpa menampilkannya,
 - variable lain diverifikasi tetap identik setelah perubahan.
 
 ### Batasan keamanan
@@ -334,6 +391,10 @@ march-env unset <app> <KEY> [--restart|--no-restart]
 
 march-env unset-many <app> <KEY> [KEY ...] [--restart|--no-restart]
 
+march-env copy <source-app> <target-app> <KEY> [--restart|--no-restart]
+
+march-env copy-many <source-app> <target-app> <KEY> [KEY ...] [--restart|--no-restart]
+
 march-env restart <app>
 ```
 
@@ -355,6 +416,13 @@ march-env set \
   PAYMENTS_PROVIDER_TRAFFIC_ENABLED
 
 march-env restart payments
+
+# Copy shared Cloudflare credentials without revealing values
+march-env copy-many \
+  api \
+  payments \
+  CLOUDFLARE_API_TOKEN \
+  CLOUDFLARE_ZONE_ID
 ```
 
 Staging:

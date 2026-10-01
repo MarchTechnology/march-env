@@ -23,6 +23,9 @@ Usage:
   march-env unset <app> <KEY> [--restart|--no-restart]
   march-env unset-many <app> <KEY> [KEY ...] [--restart|--no-restart]
 
+  march-env copy <source-app> <target-app> <KEY> [--restart|--no-restart]
+  march-env copy-many <source-app> <target-app> <KEY> [KEY ...] [--restart|--no-restart]
+
   march-env restart <app>
 
 Restart policy:
@@ -70,6 +73,18 @@ Examples:
     OLD_TWO \
     --no-restart
 
+  march-env copy \
+    api \
+    payments \
+    CLOUDFLARE_API_TOKEN
+
+  march-env copy-many \
+    api \
+    payments \
+    CLOUDFLARE_API_TOKEN \
+    CLOUDFLARE_ZONE_ID \
+    --no-restart
+
   march-env restart payments
 EOF
 }
@@ -87,14 +102,33 @@ case "${1:-}" in
 esac
 
 ACTION="${1:-}"
-APP="${2:-}"
+SOURCE_APP=''
+APP=''
 
-if [[ -z "$ACTION" || -z "$APP" ]]; then
-  usage >&2
-  exit 2
-fi
+case "$ACTION" in
+  copy|copy-many)
+    SOURCE_APP="${2:-}"
+    APP="${3:-}"
 
-shift 2
+    if [[ -z "$SOURCE_APP" || -z "$APP" ]]; then
+      usage >&2
+      exit 2
+    fi
+
+    shift 3
+    ;;
+
+  *)
+    APP="${2:-}"
+
+    if [[ -z "$APP" ]]; then
+      usage >&2
+      exit 2
+    fi
+
+    shift 2
+    ;;
+esac
 
 RESTART_MODE='restart'
 KEYS=()
@@ -141,7 +175,7 @@ case "$ACTION" in
     fi
     ;;
 
-  has|set|unset)
+  has|set|unset|copy)
     if (("${#KEYS[@]}" != 1)); then
       printf \
         'ERROR: %s requires exactly one KEY.\n' \
@@ -153,7 +187,7 @@ case "$ACTION" in
     fi
     ;;
 
-  set-many|unset-many)
+  set-many|unset-many|copy-many)
     if (("${#KEYS[@]}" < 1)); then
       printf \
         'ERROR: %s requires at least one KEY.\n' \
@@ -178,7 +212,7 @@ if [[ \
 ]]; then
   if [[ "$RESTART_MODE" != 'restart' ]]; then
     printf '%s\n' \
-      'ERROR: --no-restart is only valid for set/set-many/unset/unset-many.' \
+      'ERROR: --no-restart is only valid for set/set-many/unset/unset-many/copy/copy-many.' \
       >&2
 
     exit 2
@@ -244,6 +278,7 @@ fi
 node - \
   "$ACTION" \
   "$APP" \
+  "$SOURCE_APP" \
   "$RESTART_MODE" \
   "${KEYS[@]}" <<'NODE'
 'use strict';
@@ -258,6 +293,7 @@ const [
   ,
   action,
   app,
+  sourceApp,
   restartMode,
   ...keys
 ] = process.argv;
@@ -265,6 +301,17 @@ const [
 if (!/^[A-Za-z0-9._/-]+$/.test(app)) {
   console.error(
     'INVALID_APP: unsupported application name.'
+  );
+
+  process.exit(2);
+}
+
+if (
+  ['copy', 'copy-many'].includes(action) &&
+  !/^[A-Za-z0-9._/-]+$/.test(sourceApp)
+) {
+  console.error(
+    'INVALID_SOURCE_APP: unsupported source application name.'
   );
 
   process.exit(2);
@@ -861,6 +908,149 @@ if (
   } else {
     console.log(
       `OK: ${app} batch set; added=${added} updated=${updated} unchanged=${unchanged}; verified; ${restartSuffix(restartMode)}`
+    );
+  }
+
+  process.exit(0);
+}
+
+if (
+  action === 'copy' ||
+  action === 'copy-many'
+) {
+  const source =
+    loadApplication(sourceApp);
+
+  const before = {
+    ...current.envVars,
+  };
+
+  const ignored =
+    new Set(keys);
+
+  for (
+    const key
+    of keys
+  ) {
+    if (
+      !Object.prototype
+        .hasOwnProperty
+        .call(
+          source.envVars,
+          key
+        )
+    ) {
+      failSafe(
+        'SOURCE_KEY_MISSING',
+        `variable "${key}" is not present in source application "${sourceApp}". No changes were written.`
+      );
+    }
+  }
+
+  let added = 0;
+  let updated = 0;
+  let unchanged = 0;
+
+  for (
+    const key
+    of keys
+  ) {
+    const value =
+      source.envVars[key];
+
+    if (
+      !Object.prototype
+        .hasOwnProperty
+        .call(
+          current.envVars,
+          key
+        )
+    ) {
+      added += 1;
+    } else if (
+      current.envVars[key] ===
+        value
+    ) {
+      unchanged += 1;
+    } else {
+      updated += 1;
+    }
+
+    current.envVars[key] =
+      value;
+  }
+
+  if (
+    added === 0 &&
+    updated === 0
+  ) {
+    console.log(
+      `OK: ${sourceApp} -> ${app} no changes; unchanged=${unchanged}; no write; no restart.`
+    );
+
+    process.exit(0);
+  }
+
+  setEnvironment(
+    app,
+    current.envVars
+  );
+
+  const after =
+    loadApplication(app)
+      .envVars;
+
+  verifyPreserved(
+    before,
+    after,
+    ignored
+  );
+
+  for (
+    const key
+    of keys
+  ) {
+    if (
+      !Object.prototype
+        .hasOwnProperty
+        .call(
+          after,
+          key
+        ) ||
+      after[key] !==
+        source.envVars[key]
+    ) {
+      failSafe(
+        'VERIFY_FAILED',
+        `copied variable "${key}" was not stored correctly in target application "${app}".`
+      );
+    }
+  }
+
+  if (
+    restartMode ===
+      'restart'
+  ) {
+    restartApplication(
+      app
+    );
+  }
+
+  if (
+    action === 'copy' &&
+    keys.length === 1
+  ) {
+    const status =
+      added === 1
+        ? 'added'
+        : 'updated';
+
+    console.log(
+      `OK: ${sourceApp}:${keys[0]} -> ${app} ${status}; verified; ${restartSuffix(restartMode)}`
+    );
+  } else {
+    console.log(
+      `OK: ${sourceApp} -> ${app} batch copy; added=${added} updated=${updated} unchanged=${unchanged}; verified; ${restartSuffix(restartMode)}`
     );
   }
 
