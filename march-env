@@ -17,7 +17,7 @@ Usage:
   march-env list <app>
   march-env has <app> <KEY>
 
-  march-env set <app> <KEY> [--restart|--no-restart]
+  march-env set <app> <KEY> [VALUE] [--restart|--no-restart]
   march-env set-many <app> <KEY> [KEY ...] [--restart|--no-restart]
 
   march-env unset <app> <KEY> [--restart|--no-restart]
@@ -44,6 +44,12 @@ Examples:
   march-env set \
     payments \
     PAYMENTS_PROVIDER_TRAFFIC_ENABLED
+
+  march-env set \
+    taksira-staging \
+    TAKSIRA_AUTH_ENABLED \
+    true \
+    --no-restart
 
   march-env set \
     payments \
@@ -175,7 +181,18 @@ case "$ACTION" in
     fi
     ;;
 
-  has|set|unset|copy)
+  set)
+    if (("${#KEYS[@]}" < 1 || "${#KEYS[@]}" > 2)); then
+      printf \
+        'ERROR: set requires KEY and optional VALUE.\n' \
+        >&2
+
+      usage >&2
+      exit 2
+    fi
+    ;;
+
+  has|unset|copy)
     if (("${#KEYS[@]}" != 1)); then
       printf \
         'ERROR: %s requires exactly one KEY.\n' \
@@ -219,10 +236,60 @@ if [[ \
   fi
 fi
 
-if [[ \
-  "$ACTION" == 'set' ||
-  "$ACTION" == 'set-many'
-]]; then
+if [[ "$ACTION" == 'set' ]]; then
+  key="${KEYS[0]}"
+
+  if (("${#KEYS[@]}" == 2)); then
+    value="${KEYS[1]}"
+
+    if [[ -z "$value" ]]; then
+      printf \
+        'ERROR: empty value rejected for %s. Use unset to remove it.\n' \
+        "$key" \
+        >&2
+
+      exit 1
+    fi
+
+    export "MARCH_ENV_VALUE_0=$value"
+    KEYS=("$key")
+    unset value
+  else
+    IFS= read -r -s \
+      -p "Value for ${APP}:${key}: " \
+      value
+
+    printf '\n'
+
+    IFS= read -r -s \
+      -p "Confirm value: " \
+      confirm
+
+    printf '\n'
+
+    if [[ "$value" != "$confirm" ]]; then
+      printf \
+        'ERROR: values do not match for %s. No changes were written.\n' \
+        "$key" \
+        >&2
+
+      exit 1
+    fi
+
+    if [[ -z "$value" ]]; then
+      printf \
+        'ERROR: empty value rejected for %s. Use unset to remove it.\n' \
+        "$key" \
+        >&2
+
+      exit 1
+    fi
+
+    export "MARCH_ENV_VALUE_0=$value"
+
+    unset value confirm
+  fi
+elif [[ "$ACTION" == 'set-many' ]]; then
   declare -A seen=()
 
   for i in "${!KEYS[@]}"; do

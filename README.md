@@ -8,7 +8,7 @@ CLI untuk mengelola **Environment Variables aplikasi Node.js di cPanel/CloudLinu
 
 - Membaca daftar nama environment variable tanpa mencetak nilainya.
 - Mengecek apakah sebuah variable tersedia.
-- Menambah atau mengubah satu variable.
+- Menambah atau mengubah satu variable melalui hidden prompt atau value langsung pada command.
 - Menambah atau mengubah beberapa variable sekaligus.
 - Menghapus satu atau beberapa variable.
 - Menyalin satu atau beberapa variable antar aplikasi tanpa menampilkan nilainya.
@@ -143,6 +143,22 @@ Confirm value:
 ```
 
 Input value tidak ditampilkan di terminal.
+
+Value juga dapat diberikan langsung sebagai argument:
+
+```bash
+march-env set taksira-staging TAKSIRA_AUTH_ENABLED true --no-restart
+```
+
+Untuk value yang mengandung spasi, gunakan quote:
+
+```bash
+march-env set app MESSAGE "hello world" --no-restart
+```
+
+Mode positional value tidak meminta konfirmasi dan cocok untuk boolean, angka, identifier, serta nilai non-secret yang digunakan pada workflow deployment.
+
+> **Keamanan:** value yang ditulis langsung pada command line dapat tersimpan di shell history dan terlihat sebagai argument proses. Untuk password, token, private key, atau secret lainnya, gunakan bentuk tanpa `VALUE` agar `march-env` meminta input melalui hidden prompt.
 
 ### Menambah atau mengubah variable tanpa restart eksplisit
 
@@ -345,8 +361,9 @@ Begitu juga pada `unset-many` jika semua key sudah tidak tersedia.
 
 Proteksi yang diterapkan:
 
-- value dimasukkan menggunakan hidden prompt,
-- value tidak ditulis ke shell history,
+- pada mode prompt, value dimasukkan menggunakan hidden prompt,
+- pada mode prompt, value tidak ditulis ke shell history,
+- mode direct positional value tersedia untuk automation/non-secret, tetapi nilai tersebut dapat masuk shell history,
 - raw `cloudlinux-selector get --json` tidak pernah dicetak,
 - raw stdout/stderr Selector tidak diteruskan pada error,
 - temporary environment variable internal dibersihkan setelah proses selesai,
@@ -383,7 +400,7 @@ march-env list <app>
 
 march-env has <app> <KEY>
 
-march-env set <app> <KEY> [--restart|--no-restart]
+march-env set <app> <KEY> [VALUE] [--restart|--no-restart]
 
 march-env set-many <app> <KEY> [KEY ...] [--restart|--no-restart]
 
@@ -436,6 +453,16 @@ march-env set-many \
   --no-restart
 
 march-env restart payments-staging
+```
+
+Contoh direct set:
+
+```bash
+march-env set \
+  taksira-staging \
+  TAKSIRA_AUTH_ENABLED \
+  true \
+  --no-restart
 ```
 
 ## Verifikasi Aplikasi
