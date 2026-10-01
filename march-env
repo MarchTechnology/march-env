@@ -1,0 +1,979 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cleanup() {
+  local name
+
+  for name in "${!MARCH_ENV_VALUE_@}"; do
+    unset "$name" 2>/dev/null || true
+  done
+}
+
+trap cleanup EXIT
+
+usage() {
+  cat <<'EOF'
+Usage:
+  march-env list <app>
+  march-env has <app> <KEY>
+
+  march-env set <app> <KEY> [--restart|--no-restart]
+  march-env set-many <app> <KEY> [KEY ...] [--restart|--no-restart]
+
+  march-env unset <app> <KEY> [--restart|--no-restart]
+  march-env unset-many <app> <KEY> [KEY ...] [--restart|--no-restart]
+
+  march-env restart <app>
+
+Restart policy:
+  --restart
+      Restart application after a successful change.
+      This is the default.
+
+  --no-restart
+      Do not explicitly restart application after the change.
+
+Examples:
+  march-env list payments
+
+  march-env has payments PAYMENTS_PROVIDER_TRAFFIC_ENABLED
+
+  march-env set \
+    payments \
+    PAYMENTS_PROVIDER_TRAFFIC_ENABLED
+
+  march-env set \
+    payments \
+    PAYMENTS_PROVIDER_TRAFFIC_ENABLED \
+    --no-restart
+
+  march-env set-many \
+    payments-staging \
+    KEY_ONE \
+    KEY_TWO \
+    KEY_THREE
+
+  march-env set-many \
+    payments-staging \
+    KEY_ONE \
+    KEY_TWO \
+    KEY_THREE \
+    --no-restart
+
+  march-env unset \
+    payments \
+    SOME_OLD_VARIABLE
+
+  march-env unset-many \
+    payments-staging \
+    OLD_ONE \
+    OLD_TWO \
+    --no-restart
+
+  march-env restart payments
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 0
+fi
+
+case "${1:-}" in
+  --help|-h|help)
+    usage
+    exit 0
+    ;;
+esac
+
+ACTION="${1:-}"
+APP="${2:-}"
+
+if [[ -z "$ACTION" || -z "$APP" ]]; then
+  usage >&2
+  exit 2
+fi
+
+shift 2
+
+RESTART_MODE='restart'
+KEYS=()
+
+for arg in "$@"; do
+  case "$arg" in
+    --restart)
+      RESTART_MODE='restart'
+      ;;
+
+    --no-restart)
+      RESTART_MODE='no-restart'
+      ;;
+
+    --help|-h)
+      usage
+      exit 0
+      ;;
+
+    --*)
+      printf \
+        'ERROR: unknown option: %s\n' \
+        "$arg" \
+        >&2
+
+      exit 2
+      ;;
+
+    *)
+      KEYS+=("$arg")
+      ;;
+  esac
+done
+
+case "$ACTION" in
+  list|restart)
+    if (("${#KEYS[@]}" != 0)); then
+      printf \
+        'ERROR: %s does not accept KEY arguments.\n' \
+        "$ACTION" \
+        >&2
+
+      exit 2
+    fi
+    ;;
+
+  has|set|unset)
+    if (("${#KEYS[@]}" != 1)); then
+      printf \
+        'ERROR: %s requires exactly one KEY.\n' \
+        "$ACTION" \
+        >&2
+
+      usage >&2
+      exit 2
+    fi
+    ;;
+
+  set-many|unset-many)
+    if (("${#KEYS[@]}" < 1)); then
+      printf \
+        'ERROR: %s requires at least one KEY.\n' \
+        "$ACTION" \
+        >&2
+
+      usage >&2
+      exit 2
+    fi
+    ;;
+
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ \
+  "$ACTION" == 'list' ||
+  "$ACTION" == 'has' ||
+  "$ACTION" == 'restart'
+]]; then
+  if [[ "$RESTART_MODE" != 'restart' ]]; then
+    printf '%s\n' \
+      'ERROR: --no-restart is only valid for set/set-many/unset/unset-many.' \
+      >&2
+
+    exit 2
+  fi
+fi
+
+if [[ \
+  "$ACTION" == 'set' ||
+  "$ACTION" == 'set-many'
+]]; then
+  declare -A seen=()
+
+  for i in "${!KEYS[@]}"; do
+    key="${KEYS[$i]}"
+
+    if [[ -n "${seen[$key]+x}" ]]; then
+      printf \
+        'ERROR: duplicate KEY: %s\n' \
+        "$key" \
+        >&2
+
+      exit 2
+    fi
+
+    seen[$key]=1
+
+    IFS= read -r -s \
+      -p "Value for ${APP}:${key}: " \
+      value
+
+    printf '\n'
+
+    IFS= read -r -s \
+      -p "Confirm value: " \
+      confirm
+
+    printf '\n'
+
+    if [[ "$value" != "$confirm" ]]; then
+      printf \
+        'ERROR: values do not match for %s. No changes were written.\n' \
+        "$key" \
+        >&2
+
+      exit 1
+    fi
+
+    if [[ -z "$value" ]]; then
+      printf \
+        'ERROR: empty value rejected for %s. Use unset to remove it.\n' \
+        "$key" \
+        >&2
+
+      exit 1
+    fi
+
+    export "MARCH_ENV_VALUE_${i}=$value"
+
+    unset value confirm
+  done
+fi
+
+node - \
+  "$ACTION" \
+  "$APP" \
+  "$RESTART_MODE" \
+  "${KEYS[@]}" <<'NODE'
+'use strict';
+
+const fs = require('node:fs');
+const {
+  spawnSync,
+} = require('node:child_process');
+
+const [
+  ,
+  ,
+  action,
+  app,
+  restartMode,
+  ...keys
+] = process.argv;
+
+if (!/^[A-Za-z0-9._/-]+$/.test(app)) {
+  console.error(
+    'INVALID_APP: unsupported application name.'
+  );
+
+  process.exit(2);
+}
+
+for (const key of keys) {
+  if (
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+  ) {
+    console.error(
+      `INVALID_KEY: environment variable name is invalid: ${key}`
+    );
+
+    process.exit(2);
+  }
+}
+
+if (
+  new Set(keys).size !== keys.length
+) {
+  console.error(
+    'DUPLICATE_KEY: duplicate environment variable names are not allowed.'
+  );
+
+  process.exit(2);
+}
+
+if (
+  ![
+    'restart',
+    'no-restart',
+  ].includes(restartMode)
+) {
+  console.error(
+    'INVALID_RESTART_MODE'
+  );
+
+  process.exit(2);
+}
+
+const selectorPrefix =
+  fs.existsSync(
+    '/bin/cagefs_enter.proxied'
+  ) &&
+  fs.existsSync(
+    '/usr/sbin/cloudlinux-selector'
+  )
+    ? [
+        '/bin/cagefs_enter.proxied',
+        '/usr/sbin/cloudlinux-selector',
+      ]
+    : [
+        '/usr/sbin/cloudlinux-selector',
+      ];
+
+function selector(args) {
+  const env = {
+    ...process.env,
+  };
+
+  for (
+    const name
+    of Object.keys(env)
+  ) {
+    if (
+      name.startsWith(
+        'MARCH_ENV_VALUE_'
+      )
+    ) {
+      delete env[name];
+    }
+  }
+
+  return spawnSync(
+    selectorPrefix[0],
+    [
+      ...selectorPrefix.slice(1),
+      ...args,
+    ],
+    {
+      encoding: 'utf8',
+      env,
+      maxBuffer:
+        16 * 1024 * 1024,
+    }
+  );
+}
+
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function failSafe(
+  code,
+  message
+) {
+  console.error(
+    `${code}: ${message}`
+  );
+
+  process.exit(1);
+}
+
+function ensureSuccess(
+  result,
+  code
+) {
+  if (result.error) {
+    failSafe(
+      code,
+      result.error.code ||
+        result.error.name ||
+        'execution failed'
+    );
+  }
+
+  const data =
+    parseJson(
+      result.stdout || ''
+    );
+
+  if (
+    result.status !== 0 ||
+    !data ||
+    data.result !== 'success'
+  ) {
+    failSafe(
+      code,
+      `selector operation failed (exit=${String(result.status)})`
+    );
+  }
+
+  return data;
+}
+
+function loadApplication(
+  appRoot
+) {
+  const result =
+    selector([
+      'get',
+      '--json',
+      '--interpreter',
+      'nodejs',
+    ]);
+
+  if (result.error) {
+    failSafe(
+      'GET_FAILED',
+      result.error.code ||
+        result.error.name ||
+        'execution failed'
+    );
+  }
+
+  const data =
+    parseJson(
+      result.stdout || ''
+    );
+
+  if (
+    result.status !== 0 ||
+    !data ||
+    data.result !== 'success'
+  ) {
+    failSafe(
+      'GET_FAILED',
+      `unable to read Node.js Selector configuration (exit=${String(result.status)})`
+    );
+  }
+
+  const matches = [];
+
+  for (
+    const [
+      version,
+      versionInfo,
+    ]
+    of Object.entries(
+      data.available_versions || {}
+    )
+  ) {
+    for (
+      const [
+        username,
+        userInfo,
+      ]
+      of Object.entries(
+        versionInfo?.users || {}
+      )
+    ) {
+      const application =
+        userInfo
+          ?.applications
+          ?.[appRoot];
+
+      if (application) {
+        matches.push({
+          version,
+          username,
+          application,
+        });
+      }
+    }
+  }
+
+  if (
+    matches.length === 0
+  ) {
+    failSafe(
+      'APP_NOT_FOUND',
+      `Node.js application "${appRoot}" was not found.`
+    );
+  }
+
+  if (
+    matches.length > 1
+  ) {
+    failSafe(
+      'APP_AMBIGUOUS',
+      `more than one application matched "${appRoot}".`
+    );
+  }
+
+  const match =
+    matches[0];
+
+  const envVars =
+    match.application.env_vars;
+
+  if (
+    !envVars ||
+    typeof envVars !== 'object' ||
+    Array.isArray(envVars)
+  ) {
+    failSafe(
+      'ENV_FORMAT_UNEXPECTED',
+      `environment map for "${appRoot}" is not an object.`
+    );
+  }
+
+  return {
+    version:
+      match.version,
+
+    username:
+      match.username,
+
+    domain:
+      match.application.domain ||
+      '',
+
+    status:
+      match.application.app_status ||
+      '',
+
+    envVars: {
+      ...envVars,
+    },
+  };
+}
+
+function setEnvironment(
+  appRoot,
+  envVars
+) {
+  const payload =
+    JSON.stringify(
+      envVars
+    );
+
+  const result =
+    selector([
+      'set',
+      '--json',
+      '--interpreter',
+      'nodejs',
+      '--app-root',
+      appRoot,
+      '--env-vars',
+      payload,
+    ]);
+
+  ensureSuccess(
+    result,
+    'SET_FAILED'
+  );
+}
+
+function restartApplication(
+  appRoot
+) {
+  const result =
+    selector([
+      'restart',
+      '--json',
+      '--interpreter',
+      'nodejs',
+      '--app-root',
+      appRoot,
+    ]);
+
+  ensureSuccess(
+    result,
+    'RESTART_FAILED'
+  );
+}
+
+function verifyPreserved(
+  before,
+  after,
+  ignoredKeys =
+    new Set()
+) {
+  for (
+    const [
+      name,
+      value,
+    ]
+    of Object.entries(before)
+  ) {
+    if (
+      ignoredKeys.has(name)
+    ) {
+      continue;
+    }
+
+    if (
+      !Object.prototype
+        .hasOwnProperty
+        .call(
+          after,
+          name
+        ) ||
+      after[name] !== value
+    ) {
+      failSafe(
+        'PRESERVATION_CHECK_FAILED',
+        `existing variable "${name}" changed unexpectedly.`
+      );
+    }
+  }
+}
+
+function restartSuffix(
+  mode
+) {
+  return (
+    mode === 'restart'
+      ? 'application restarted.'
+      : 'explicit restart skipped.'
+  );
+}
+
+if (
+  action === 'restart'
+) {
+  loadApplication(app);
+
+  restartApplication(app);
+
+  console.log(
+    `OK: ${app} restarted.`
+  );
+
+  process.exit(0);
+}
+
+const current =
+  loadApplication(app);
+
+if (
+  action === 'list'
+) {
+  console.log(
+    `APP=${app}`
+  );
+
+  console.log(
+    `DOMAIN=${
+      current.domain || '-'
+    }`
+  );
+
+  console.log(
+    `NODE=${current.version}`
+  );
+
+  console.log(
+    `STATUS=${
+      current.status || '-'
+    }`
+  );
+
+  console.log(
+    `ENV_COUNT=${
+      Object.keys(
+        current.envVars
+      ).length
+    }`
+  );
+
+  console.log(
+    'ENV_KEYS:'
+  );
+
+  for (
+    const name
+    of Object.keys(
+      current.envVars
+    ).sort()
+  ) {
+    console.log(
+      `  ${name}`
+    );
+  }
+
+  process.exit(0);
+}
+
+if (
+  action === 'has'
+) {
+  const key =
+    keys[0];
+
+  const exists =
+    Object.prototype
+      .hasOwnProperty
+      .call(
+        current.envVars,
+        key
+      );
+
+  console.log(
+    `${app}:${key}=${
+      exists
+        ? 'SET'
+        : 'MISSING'
+    }`
+  );
+
+  process.exit(
+    exists ? 0 : 3
+  );
+}
+
+if (
+  action === 'set' ||
+  action === 'set-many'
+) {
+  const before = {
+    ...current.envVars,
+  };
+
+  const ignored =
+    new Set(keys);
+
+  let added = 0;
+  let updated = 0;
+  let unchanged = 0;
+
+  keys.forEach(
+    (
+      key,
+      index
+    ) => {
+      const envName =
+        `MARCH_ENV_VALUE_${index}`;
+
+      const value =
+        process.env[
+          envName
+        ];
+
+      delete process.env[
+        envName
+      ];
+
+      if (
+        typeof value !==
+          'string' ||
+        value.length === 0
+      ) {
+        failSafe(
+          'VALUE_MISSING',
+          `value was not supplied for "${key}".`
+        );
+      }
+
+      if (
+        !Object.prototype
+          .hasOwnProperty
+          .call(
+            current.envVars,
+            key
+          )
+      ) {
+        added += 1;
+      } else if (
+        current.envVars[
+          key
+        ] === value
+      ) {
+        unchanged += 1;
+      } else {
+        updated += 1;
+      }
+
+      current.envVars[
+        key
+      ] = value;
+    }
+  );
+
+  if (
+    added === 0 &&
+    updated === 0
+  ) {
+    console.log(
+      `OK: ${app} no changes; unchanged=${unchanged}; no write; no restart.`
+    );
+
+    process.exit(0);
+  }
+
+  setEnvironment(
+    app,
+    current.envVars
+  );
+
+  const after =
+    loadApplication(app)
+      .envVars;
+
+  verifyPreserved(
+    before,
+    after,
+    ignored
+  );
+
+  for (
+    const key
+    of keys
+  ) {
+    const expected =
+      current.envVars[key];
+
+    if (
+      !Object.prototype
+        .hasOwnProperty
+        .call(
+          after,
+          key
+        ) ||
+      after[key] !==
+        expected
+    ) {
+      failSafe(
+        'VERIFY_FAILED',
+        `variable "${key}" was not stored correctly.`
+      );
+    }
+  }
+
+  if (
+    restartMode ===
+      'restart'
+  ) {
+    restartApplication(
+      app
+    );
+  }
+
+  if (
+    action === 'set' &&
+    keys.length === 1
+  ) {
+    const key =
+      keys[0];
+
+    const status =
+      added === 1
+        ? 'added'
+        : 'updated';
+
+    console.log(
+      `OK: ${app}:${key} ${status}; verified; ${restartSuffix(restartMode)}`
+    );
+  } else {
+    console.log(
+      `OK: ${app} batch set; added=${added} updated=${updated} unchanged=${unchanged}; verified; ${restartSuffix(restartMode)}`
+    );
+  }
+
+  process.exit(0);
+}
+
+if (
+  action === 'unset' ||
+  action === 'unset-many'
+) {
+  const before = {
+    ...current.envVars,
+  };
+
+  const ignored =
+    new Set(keys);
+
+  let removed = 0;
+  let alreadyMissing = 0;
+
+  for (
+    const key
+    of keys
+  ) {
+    if (
+      Object.prototype
+        .hasOwnProperty
+        .call(
+          current.envVars,
+          key
+        )
+    ) {
+      delete current.envVars[
+        key
+      ];
+
+      removed += 1;
+    } else {
+      alreadyMissing += 1;
+    }
+  }
+
+  if (
+    removed === 0
+  ) {
+    console.log(
+      `OK: ${app} no changes; already_missing=${alreadyMissing}; no write; no restart.`
+    );
+
+    process.exit(0);
+  }
+
+  setEnvironment(
+    app,
+    current.envVars
+  );
+
+  const after =
+    loadApplication(app)
+      .envVars;
+
+  verifyPreserved(
+    before,
+    after,
+    ignored
+  );
+
+  for (
+    const key
+    of keys
+  ) {
+    if (
+      Object.prototype
+        .hasOwnProperty
+        .call(
+          after,
+          key
+        )
+    ) {
+      failSafe(
+        'VERIFY_FAILED',
+        `variable "${key}" is still present.`
+      );
+    }
+  }
+
+  if (
+    restartMode ===
+      'restart'
+  ) {
+    restartApplication(
+      app
+    );
+  }
+
+  if (
+    action === 'unset' &&
+    keys.length === 1
+  ) {
+    console.log(
+      `OK: ${app}:${keys[0]} removed; verified; ${restartSuffix(restartMode)}`
+    );
+  } else {
+    console.log(
+      `OK: ${app} batch unset; removed=${removed} already_missing=${alreadyMissing}; verified; ${restartSuffix(restartMode)}`
+    );
+  }
+
+  process.exit(0);
+}
+
+failSafe(
+  'INVALID_ACTION',
+  'unsupported action.'
+);
+NODE
