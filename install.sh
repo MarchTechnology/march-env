@@ -7,12 +7,20 @@ INSTALL_DIR="${MARCH_ENV_INSTALL_DIR:-$HOME/.local/bin}"
 DEST="$INSTALL_DIR/march-env"
 RAW_URL="https://raw.githubusercontent.com/${REPO}/${REF}/march-env"
 TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/march-env.XXXXXX")"
+TMP_DEST=''
 
 cleanup() {
   rm -f "$TMP_FILE"
+
+  if [[ -n "$TMP_DEST" ]]; then
+    rm -f "$TMP_DEST"
+  fi
 }
 
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fail() {
   printf 'ERROR: %s\n' "$1" >&2
@@ -56,6 +64,7 @@ else
 fi
 
 mv -f "$TMP_DEST" "$DEST"
+TMP_DEST=''
 
 printf 'Installed: %s\n' "$DEST"
 printf 'Validation: PASS\n'
@@ -63,8 +72,7 @@ printf 'Validation: PASS\n'
 if [[ ":${PATH}:" != *":${INSTALL_DIR}:"* ]]; then
   printf '\nAdd this directory to PATH:\n'
   printf '  export PATH="%s:$PATH"\n' "$INSTALL_DIR"
-  printf '\nFor Bash, you can persist it with:\n'
-  printf '  printf '\''%%s\\n'\'' '\''export PATH="$HOME/.local/bin:$PATH"'\'' >> "$HOME/.bashrc"\n'
+  printf '\nPersist the same export in your shell profile (for example ~/.bashrc).\n'
 else
   if command -v march-env >/dev/null 2>&1; then
     printf 'Command: %s\n' "$(command -v march-env)"
