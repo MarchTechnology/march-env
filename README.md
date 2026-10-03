@@ -88,7 +88,7 @@ bash /tmp/march-env-install.sh
 
 ### Instalasi via Git
 
-Sama seperti pola distribusi MarchJson, repository dapat di-clone langsung melalui HTTPS:
+Repository dapat di-clone langsung melalui HTTPS:
 
 ```bash
 git clone https://github.com/MarchTechnology/march-env.git
