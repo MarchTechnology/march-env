@@ -42,34 +42,111 @@ Implementasi saat ini telah digunakan dengan Node.js 24 pada CloudLinux/Passenge
 
 ## Instalasi
 
-Clone repository:
+Repository ini bersifat public. Instalasi tidak membutuhkan GitHub SSH key atau deploy key.
+
+### Quick install
 
 ```bash
-git clone git@github.com:MarchTechnology/march-env.git
-cd march-env
+curl -fsSL https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh | bash
 ```
 
-Pasang ke user-local binary directory:
+Installer akan:
 
-```bash
-mkdir -p "$HOME/.local/bin"
-install -m 700 ./march-env "$HOME/.local/bin/march-env"
-```
-
-Pastikan `$HOME/.local/bin` tersedia di `PATH`:
-
-```bash
-grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null ||
-  printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-
-export PATH="$HOME/.local/bin:$PATH"
-hash -r
-```
+- mengunduh `march-env` dari repository public,
+- memvalidasi Bash syntax sebelum instalasi,
+- memasang binary ke `~/.local/bin/march-env`,
+- menggunakan permission `700`,
+- melakukan replace secara atomik,
+- memberi petunjuk PATH jika `~/.local/bin` belum ada di `PATH`.
 
 Validasi:
 
 ```bash
 march-env --help
+```
+
+Jika `~/.local/bin` belum ada di `PATH`:
+
+```bash
+printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+export PATH="$HOME/.local/bin:$PATH"
+hash -r
+```
+
+### Review installer sebelum menjalankan
+
+Untuk environment yang tidak mengizinkan `curl | bash`:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh \
+  -o /tmp/march-env-install.sh
+
+less /tmp/march-env-install.sh
+bash /tmp/march-env-install.sh
+```
+
+### Instalasi via Git
+
+Sama seperti pola distribusi MarchJson, repository dapat di-clone langsung melalui HTTPS:
+
+```bash
+git clone https://github.com/MarchTechnology/march-env.git
+cd march-env
+
+mkdir -p "$HOME/.local/bin"
+install -m 700 ./march-env "$HOME/.local/bin/march-env"
+```
+
+Tidak perlu:
+
+```text
+git@github.com
+SSH deploy key
+repository-specific SSH alias
+```
+
+untuk instalasi public.
+
+### Update
+
+Jalankan kembali installer yang sama:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh | bash
+```
+
+Atau jika menggunakan clone Git:
+
+```bash
+git pull --ff-only
+install -m 700 ./march-env "$HOME/.local/bin/march-env"
+```
+
+### Pin ke commit atau tag
+
+Installer mendukung `MARCH_ENV_REF`:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh |
+  MARCH_ENV_REF=<commit-or-tag> bash
+```
+
+Custom install directory juga didukung:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh |
+  MARCH_ENV_INSTALL_DIR="$HOME/bin" bash
+```
+
+Default:
+
+```text
+MARCH_ENV_REPO=MarchTechnology/march-env
+MARCH_ENV_REF=main
+MARCH_ENV_INSTALL_DIR=$HOME/.local/bin
 ```
 
 ## Penggunaan
@@ -477,6 +554,10 @@ curl -sS -o /dev/null -w 'ready=%{http_code}\n' \
   https://example.com/ready
 ```
 
+## Distribusi
+
+Repository dan installer tersedia secara public melalui GitHub. Tidak ada credential MarchTech yang diperlukan untuk mengunduh atau memasang `march-env`.
+
 ## License
 
-Internal MarchTech utility. Tambahkan atau ubah lisensi repository sesuai kebijakan distribusi yang berlaku.
+Repository saat ini belum menetapkan lisensi open-source eksplisit. Akses public ke source code tidak otomatis memberikan hak redistribusi atau modifikasi di luar ketentuan yang ditetapkan pemilik repository.
