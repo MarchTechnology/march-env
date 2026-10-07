@@ -33,6 +33,9 @@ Status: **COMPLETE**
 - [x] `MARCH_ENV_REF` untuk pin commit/tag.
 - [x] `MARCH_ENV_INSTALL_DIR` untuk custom install path.
 - [x] README public installation/update documentation.
+- [x] Installer isolation: hanya menulis `march-env` pada install directory.
+- [x] Tidak mengedit `~/.bashrc` atau konfigurasi tool lain.
+- [x] Acceptance test memastikan `marchjson` tidak dihapus, ditimpa, atau diubah saat install/reinstall.
 
 ### Runtime Acceptance
 

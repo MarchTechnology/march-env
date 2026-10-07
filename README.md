@@ -149,6 +149,24 @@ MARCH_ENV_REF=main
 MARCH_ENV_INSTALL_DIR=$HOME/.local/bin
 ```
 
+### Isolasi instalasi
+
+Installer hanya menulis binary berikut di install directory:
+
+```text
+march-env
+```
+
+Installer tidak menghapus, mengganti, atau mengubah binary `marchjson`, dan tidak mengedit konfigurasi shell seperti `~/.bashrc`. Karena itu `march-env` dapat dipasang pada `~/.local/bin` yang sama dengan tool lain tanpa mengambil alih nama command mereka.
+
+Repository menyertakan acceptance test regresi:
+
+```bash
+bash scripts/install-isolation-acceptance.sh
+```
+
+Test tersebut menjalankan install dan reinstall pada sandbox sementara, lalu memverifikasi bahwa sentinel `marchjson` tetap memiliki content hash dan permission yang sama.
+
 ## Penggunaan
 
 ### Melihat environment variable
