@@ -4,6 +4,17 @@
 
 Status: **COMPLETE**
 
+### Versioning
+
+- [x] Semantic Versioning.
+- [x] Initial public version `0.1.0`.
+- [x] `VERSION` sebagai repository version source of truth.
+- [x] `march-env --version`.
+- [x] `march-env -v`.
+- [x] `march-env version`.
+- [x] Installer version validation.
+- [x] Version drift acceptance test.
+
 ### Core CLI
 
 - [x] `list`

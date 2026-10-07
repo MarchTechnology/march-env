@@ -51,6 +51,14 @@ fi
 bash -n "$TMP_FILE" ||
   fail 'downloaded march-env failed Bash syntax validation.'
 
+VERSION_OUTPUT="$(
+  bash "$TMP_FILE" --version
+)"
+
+if [[ ! "$VERSION_OUTPUT" =~ ^march-env[[:space:]][0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+  fail 'downloaded march-env returned an invalid version string.'
+fi
+
 mkdir -p "$INSTALL_DIR"
 
 TMP_DEST="$DEST.tmp.$$"
@@ -66,7 +74,15 @@ fi
 mv -f "$TMP_DEST" "$DEST"
 TMP_DEST=''
 
+INSTALLED_VERSION="$(
+  "$DEST" --version
+)"
+
+[[ "$INSTALLED_VERSION" == "$VERSION_OUTPUT" ]] ||
+  fail 'installed march-env version does not match downloaded binary.'
+
 printf 'Installed: %s\n' "$DEST"
+printf 'Version: %s\n' "$INSTALLED_VERSION"
 printf 'Validation: PASS\n'
 
 if [[ ":${PATH}:" != *":${INSTALL_DIR}:"* ]]; then

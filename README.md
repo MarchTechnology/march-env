@@ -6,6 +6,7 @@ CLI untuk mengelola **Environment Variables aplikasi Node.js di cPanel/CloudLinu
 
 ## Fitur
 
+- Versioning SemVer dengan `march-env --version`, `march-env -v`, dan `march-env version`.
 - Membaca daftar nama environment variable tanpa mencetak nilainya.
 - Mengecek apakah sebuah variable tersedia.
 - Menambah atau mengubah satu variable melalui hidden prompt atau value langsung pada command.
@@ -62,7 +63,14 @@ Installer akan:
 Validasi:
 
 ```bash
+march-env --version
 march-env --help
+```
+
+Output versi saat ini:
+
+```text
+march-env 0.1.0
 ```
 
 Jika `~/.local/bin` belum ada di `PATH`:
@@ -166,6 +174,48 @@ bash scripts/install-isolation-acceptance.sh
 ```
 
 Test tersebut menjalankan install dan reinstall pada sandbox sementara, lalu memverifikasi bahwa sentinel `marchjson` tetap memiliki content hash dan permission yang sama.
+
+## Versioning
+
+`march-env` menggunakan [Semantic Versioning](https://semver.org/) dengan format:
+
+```text
+MAJOR.MINOR.PATCH
+```
+
+Versi saat ini:
+
+```text
+0.1.0
+```
+
+Cek versi binary yang terpasang:
+
+```bash
+march-env --version
+march-env -v
+march-env version
+```
+
+Ketiganya menghasilkan:
+
+```text
+march-env 0.1.0
+```
+
+Aturan bump:
+
+- **MAJOR** — perubahan CLI atau perilaku yang tidak backward-compatible.
+- **MINOR** — fitur baru yang tetap backward-compatible.
+- **PATCH** — bug fix, hardening, atau perubahan internal yang backward-compatible.
+
+Source of truth versi repository adalah file `VERSION`. Nilai pada `VERSION` harus sama dengan konstanta versi di binary. Repository menyediakan acceptance test untuk mencegah version drift:
+
+```bash
+bash scripts/version-acceptance.sh
+```
+
+Installer juga memvalidasi format versi binary sebelum melakukan replace dan menampilkan versi setelah instalasi berhasil.
 
 ## Penggunaan
 
@@ -491,6 +541,10 @@ Jangan anggap tool ini sebagai boundary terhadap administrator sistem.
 ## Command Reference
 
 ```text
+march-env --version
+march-env -v
+march-env version
+
 march-env list <app>
 
 march-env has <app> <KEY>
