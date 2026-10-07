@@ -13,6 +13,7 @@ Status: **COMPLETE**
 - [x] `march-env -v`.
 - [x] `march-env version`.
 - [x] Installer version validation.
+- [x] Branch/tag resolve ke immutable commit SHA sebelum binary download.
 - [x] Version drift acceptance test.
 
 ### Core CLI
@@ -69,7 +70,11 @@ https://github.com/MarchTechnology/march-env
 Quick install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh | bash
+curl -fsSL \
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H 'User-Agent: march-env-installer' \
+  'https://api.github.com/repos/MarchTechnology/march-env/contents/install.sh?ref=main' |
+  bash
 ```
 
 Public Git installation:

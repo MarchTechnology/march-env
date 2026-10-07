@@ -44,12 +44,22 @@ cat > "$MOCK_BIN/curl" <<'EOF'
 set -euo pipefail
 
 OUTPUT=''
+URL=''
 
 while (($#)); do
   case "$1" in
     -o)
       OUTPUT="$2"
       shift 2
+      ;;
+
+    -H)
+      shift 2
+      ;;
+
+    http://*|https://*)
+      URL="$1"
+      shift
       ;;
 
     *)
@@ -59,7 +69,13 @@ while (($#)); do
 done
 
 [[ -n "$OUTPUT" ]] || exit 2
-cp "$MARCH_ENV_TEST_SOURCE" "$OUTPUT"
+[[ -n "$URL" ]] || exit 2
+
+if [[ "$URL" == *"/commits/"* ]]; then
+  printf '{"sha":"1111111111111111111111111111111111111111"}\n' > "$OUTPUT"
+else
+  cp "$MARCH_ENV_TEST_SOURCE" "$OUTPUT"
+fi
 EOF
 
 cat > "$MOCK_BIN/node" <<'EOF'

@@ -48,12 +48,17 @@ Repository ini bersifat public. Instalasi tidak membutuhkan GitHub SSH key atau 
 ### Quick install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh | bash
+curl -fsSL \
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H 'User-Agent: march-env-installer' \
+  'https://api.github.com/repos/MarchTechnology/march-env/contents/install.sh?ref=main' |
+  bash
 ```
 
 Installer akan:
 
-- mengunduh `march-env` dari repository public,
+- me-resolve branch/tag seperti `main` ke commit SHA immutable melalui GitHub API,
+- mengunduh `march-env` dari commit SHA tersebut,
 - memvalidasi Bash syntax sebelum instalasi,
 - memasang binary ke `~/.local/bin/march-env`,
 - menggunakan permission `700`,
@@ -121,7 +126,11 @@ untuk instalasi public.
 Jalankan kembali installer yang sama:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh | bash
+curl -fsSL \
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H 'User-Agent: march-env-installer' \
+  'https://api.github.com/repos/MarchTechnology/march-env/contents/install.sh?ref=main' |
+  bash
 ```
 
 Atau jika menggunakan clone Git:
@@ -133,11 +142,13 @@ install -m 700 ./march-env "$HOME/.local/bin/march-env"
 
 ### Pin ke commit atau tag
 
-Installer mendukung `MARCH_ENV_REF`:
+Installer mendukung `MARCH_ENV_REF`. Branch atau tag akan di-resolve ke commit SHA sebelum binary diunduh; commit SHA 40 karakter digunakan langsung:
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh |
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H 'User-Agent: march-env-installer' \
+  'https://api.github.com/repos/MarchTechnology/march-env/contents/install.sh?ref=main' |
   MARCH_ENV_REF=<commit-or-tag> bash
 ```
 
@@ -145,7 +156,9 @@ Custom install directory juga didukung:
 
 ```bash
 curl -fsSL \
-  https://raw.githubusercontent.com/MarchTechnology/march-env/main/install.sh |
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H 'User-Agent: march-env-installer' \
+  'https://api.github.com/repos/MarchTechnology/march-env/contents/install.sh?ref=main' |
   MARCH_ENV_INSTALL_DIR="$HOME/bin" bash
 ```
 
@@ -215,7 +228,7 @@ Source of truth versi repository adalah file `VERSION`. Nilai pada `VERSION` har
 bash scripts/version-acceptance.sh
 ```
 
-Installer juga memvalidasi format versi binary sebelum melakukan replace dan menampilkan versi setelah instalasi berhasil.
+Installer juga memvalidasi format versi binary sebelum melakukan replace dan menampilkan versi setelah instalasi berhasil. Branch/tag tidak digunakan langsung untuk pengambilan binary: installer menguncinya ke commit SHA terlebih dahulu sehingga satu proses instalasi tidak mencampur revision yang berbeda.
 
 ## Penggunaan
 
